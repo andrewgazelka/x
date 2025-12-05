@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    @keyframes download {
+      0%, 100% { transform: translateY(0); opacity: 0.3; }
+      50% { transform: translateY(10px); opacity: 1; }
+    }
+    @keyframes unpack {
+      0%, 40% { transform: scaleY(0); transform-origin: bottom; }
+      60%, 100% { transform: scaleY(1); transform-origin: bottom; }
+    }
+    .arrow { animation: download 2s ease-in-out infinite; }
+    .box1 { animation: unpack 3s ease-out infinite; animation-delay: 0s; }
+    .box2 { animation: unpack 3s ease-out infinite; animation-delay: 0.2s; }
+    .box3 { animation: unpack 3s ease-out infinite; animation-delay: 0.4s; }
+  </style>
+
+  <!-- Background -->
+  <rect width="800" height="200" fill="url(#bg)"/>
+
+  <!-- Cloud/download icon -->
+  <g transform="translate(80, 60)">
+    <!-- Cloud -->
+    <ellipse cx="50" cy="40" rx="35" ry="25" fill="#8b949e" opacity="0.6"/>
+    <ellipse cx="85" cy="45" rx="25" ry="20" fill="#8b949e" opacity="0.6"/>
+    <ellipse cx="25" cy="50" rx="20" ry="15" fill="#8b949e" opacity="0.6"/>
+
+    <!-- Download arrow -->
+    <g class="arrow">
+      <rect x="45" y="55" width="10" height="30" fill="#50d890" rx="2"/>
+      <polygon points="50,100 35,80 65,80" fill="#50d890"/>
+    </g>
+  </g>
+
+  <!-- Unpacked boxes -->
+  <g transform="translate(180, 100)">
+    <rect class="box1" x="0" y="0" width="16" height="40" fill="#5b9bd5" rx="2" opacity="0.8"/>
+    <rect class="box2" x="22" y="10" width="16" height="30" fill="#ff6b6b" rx="2" opacity="0.8"/>
+    <rect class="box3" x="44" y="5" width="16" height="35" fill="#50d890" rx="2" opacity="0.8"/>
+  </g>
+
+  <!-- Title -->
+  <text x="280" y="95" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="700" fill="#ffffff">x</text>
+
+  <!-- Subtitle -->
+  <text x="280" y="130" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#8b949e">rootless nix package runner</text>
+</svg>
