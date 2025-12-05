@@ -1,7 +1,8 @@
 //! First-time setup and bootstrapping
 //!
-//! Sets up the store directory at `/home/x/.x/store`.
-//! This path must be consistent across all systems for Nix store paths to work.
+//! Sets up the store directory:
+//! - Linux: `/home/x/.x/store` (requires one-time sudo)
+//! - macOS: `/Users/Shared/.x/store` (no root needed!)
 
 use eyre::WrapErr;
 
@@ -36,9 +37,8 @@ fn setup_linux() -> eyre::Result<()> {
     let store_dir = libx_store::store_dir();
 
     if !home_x.exists() {
-        tracing::info!("Creating /home/x (requires sudo)...");
+        tracing::info!("Creating /home/x (requires sudo once)...");
 
-        // Try to create with sudo
         let status = std::process::Command::new("sudo")
             .args(["mkdir", "-p", "/home/x"])
             .status()
@@ -51,7 +51,6 @@ fn setup_linux() -> eyre::Result<()> {
             );
         }
 
-        // Change ownership to current user
         let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
         let status = std::process::Command::new("sudo")
             .args(["chown", &user, "/home/x"])
@@ -63,7 +62,6 @@ fn setup_linux() -> eyre::Result<()> {
         }
     }
 
-    // Create the store directory
     std::fs::create_dir_all(&store_dir)
         .wrap_err_with(|| format!("failed to create store directory {}", store_dir.display()))?;
 
@@ -73,60 +71,9 @@ fn setup_linux() -> eyre::Result<()> {
 
 #[cfg(target_os = "macos")]
 fn setup_macos() -> eyre::Result<()> {
-    let shared_x = std::path::Path::new("/Users/Shared/.x");
-    let home_x = std::path::Path::new("/home/x");
+    // /Users/Shared is writable by all users without root!
     let store_dir = libx_store::store_dir();
 
-    // Strategy: Use /Users/Shared/.x as the real location,
-    // symlink /home/x -> /Users/Shared/.x
-
-    // Create /Users/Shared/.x (no sudo needed)
-    if !shared_x.exists() {
-        std::fs::create_dir_all(shared_x).wrap_err("failed to create /Users/Shared/.x")?;
-    }
-
-    // Create the symlink at /home/x if it doesn't exist
-    if !home_x.exists() {
-        tracing::info!("Creating symlink /home/x -> /Users/Shared/.x (requires sudo)...");
-
-        // Ensure /home exists (may need synthetic.conf on newer macOS)
-        let home = std::path::Path::new("/home");
-        if !home.exists() {
-            tracing::warn!(
-                "Note: /home doesn't exist on macOS.\n\
-                 You may need to add 'home' to /etc/synthetic.conf and reboot.\n\
-                 Alternatively, we'll try to create it with sudo."
-            );
-
-            let status = std::process::Command::new("sudo")
-                .args(["mkdir", "-p", "/home"])
-                .status()
-                .wrap_err("failed to run 'sudo mkdir -p /home'")?;
-
-            if !status.success() {
-                eyre::bail!(
-                    "failed to create /home. On macOS, you may need to:\n\
-                     1. Add 'home' to /etc/synthetic.conf\n\
-                     2. Reboot\n\
-                     3. Run x again"
-                );
-            }
-        }
-
-        let status = std::process::Command::new("sudo")
-            .args(["ln", "-s", "/Users/Shared/.x", "/home/x"])
-            .status()
-            .wrap_err("failed to run 'sudo ln -s /Users/Shared/.x /home/x'")?;
-
-        if !status.success() {
-            eyre::bail!(
-                "failed to create symlink /home/x. Please run:\n\
-                 sudo ln -s /Users/Shared/.x /home/x"
-            );
-        }
-    }
-
-    // Create the store directory
     std::fs::create_dir_all(&store_dir)
         .wrap_err_with(|| format!("failed to create store directory {}", store_dir.display()))?;
 
@@ -140,8 +87,7 @@ pub fn print_manual_setup_instructions() {
     {
         tracing::info!("\n=== Manual Setup Instructions ===\n");
         tracing::info!("On Linux, run:");
-        tracing::info!("  sudo mkdir -p /home/x");
-        tracing::info!("  sudo chown $USER /home/x");
+        tracing::info!("  sudo mkdir -p /home/x && sudo chown $USER /home/x");
         tracing::info!("  mkdir -p /home/x/.x/store");
     }
 
@@ -150,11 +96,7 @@ pub fn print_manual_setup_instructions() {
         tracing::info!("\n=== Manual Setup Instructions ===\n");
         tracing::info!("On macOS, run:");
         tracing::info!("  mkdir -p /Users/Shared/.x/store");
-        tracing::info!("  sudo ln -s /Users/Shared/.x /home/x");
-        tracing::info!("");
-        tracing::info!("If /home doesn't exist, first add to /etc/synthetic.conf:");
-        tracing::info!("  echo 'home' | sudo tee -a /etc/synthetic.conf");
-        tracing::info!("Then reboot and run the commands above.");
+        tracing::info!("\nNo root access required!");
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]

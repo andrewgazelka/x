@@ -1,0 +1,327 @@
+name: 'x-publish'
+description: 'Build and publish Nix flake packages to the x package registry'
+author: 'andrewgazelka'
+
+branding:
+  icon: 'package'
+  color: 'purple'
+
+inputs:
+  r2_account_id:
+    description: 'Cloudflare R2 account ID'
+    required: true
+  r2_access_key:
+    description: 'Cloudflare R2 access key ID'
+    required: true
+  r2_secret_key:
+    description: 'Cloudflare R2 secret access key'
+    required: true
+  r2_bucket:
+    description: 'R2 bucket name'
+    required: false
+    default: 'x-pkg'
+  outputs:
+    description: 'Comma-separated list of flake outputs to build (empty = all)'
+    required: false
+    default: ''
+  working_directory:
+    description: 'Directory containing the flake.nix'
+    required: false
+    default: '.'
+
+outputs:
+  manifest_url:
+    description: 'URL to the published manifest'
+    value: ${{ steps.publish.outputs.manifest_url }}
+  store_paths:
+    description: 'JSON array of published store paths'
+    value: ${{ steps.publish.outputs.store_paths }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Detect system and set store path
+      id: system
+      shell: bash
+      run: |
+        # Detect Nix system identifier
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  SYSTEM="x86_64-linux" ;;
+          Linux-aarch64) SYSTEM="aarch64-linux" ;;
+          Darwin-x86_64) SYSTEM="x86_64-darwin" ;;
+          Darwin-arm64)  SYSTEM="aarch64-darwin" ;;
+          *) echo "::error::Unsupported platform: $(uname -s)-$(uname -m)"; exit 1 ;;
+        esac
+        echo "system=$SYSTEM" >> "$GITHUB_OUTPUT"
+
+        # OS-specific store paths (must match x CLI expectations)
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          STORE_PATH="/Users/Shared/.x/store"
+          STATE_PATH="/Users/Shared/.x/var/nix"
+          LOG_PATH="/Users/Shared/.x/var/log/nix"
+        else
+          STORE_PATH="/home/x/.x/store"
+          STATE_PATH="/home/x/.x/var/nix"
+          LOG_PATH="/home/x/.x/var/log/nix"
+        fi
+
+        echo "store_path=$STORE_PATH" >> "$GITHUB_OUTPUT"
+        echo "state_path=$STATE_PATH" >> "$GITHUB_OUTPUT"
+        echo "log_path=$LOG_PATH" >> "$GITHUB_OUTPUT"
+
+        # Nix store URL for building with custom paths
+        echo "store_url=local?store=$STORE_PATH&state=$STATE_PATH&log=$LOG_PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Setup custom store directory
+      shell: bash
+      env:
+        STORE_PATH: ${{ steps.system.outputs.store_path }}
+        STATE_PATH: ${{ steps.system.outputs.state_path }}
+        LOG_PATH: ${{ steps.system.outputs.log_path }}
+      run: |
+        # Create store directories with appropriate permissions
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          # macOS: /Users/Shared is writable without root
+          mkdir -p "$STORE_PATH" "$STATE_PATH" "$LOG_PATH"
+        else
+          # Linux: need to create /home/x
+          sudo mkdir -p "$(dirname "$STORE_PATH")"
+          sudo chown -R "$(id -u):$(id -g)" "$(dirname "$STORE_PATH")"
+          mkdir -p "$STORE_PATH" "$STATE_PATH" "$LOG_PATH"
+        fi
+
+        echo "Store directory ready at $STORE_PATH"
+
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@main
+      with:
+        extra-conf: |
+          experimental-features = nix-command flakes
+
+    - name: Setup Nix cache
+      uses: DeterminateSystems/magic-nix-cache-action@main
+
+    - name: Configure AWS CLI for R2
+      shell: bash
+      env:
+        R2_ACCOUNT_ID: ${{ inputs.r2_account_id }}
+        R2_ACCESS_KEY: ${{ inputs.r2_access_key }}
+        R2_SECRET_KEY: ${{ inputs.r2_secret_key }}
+      run: |
+        if ! command -v aws &>/dev/null; then
+          if [[ "$(uname -s)" == "Darwin" ]]; then
+            brew install awscli
+          else
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp
+            sudo /tmp/aws/install
+          fi
+        fi
+
+        aws configure set aws_access_key_id "$R2_ACCESS_KEY"
+        aws configure set aws_secret_access_key "$R2_SECRET_KEY"
+        aws configure set default.region auto
+        echo "R2_ENDPOINT=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+
+    - name: Build and publish
+      id: publish
+      shell: bash
+      env:
+        R2_BUCKET: ${{ inputs.r2_bucket }}
+        OUTPUTS: ${{ inputs.outputs }}
+        WORKDIR: ${{ inputs.working_directory }}
+        SYSTEM: ${{ steps.system.outputs.system }}
+        STORE_PATH: ${{ steps.system.outputs.store_path }}
+        STORE_URL: ${{ steps.system.outputs.store_url }}
+      run: |
+        set -euo pipefail
+        cd "$WORKDIR"
+
+        OWNER="${GITHUB_REPOSITORY_OWNER}"
+        REPO="${GITHUB_REPOSITORY#*/}"
+
+        # Determine ref name from git ref
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          REF="${GITHUB_REF#refs/tags/}"
+        elif [[ "$GITHUB_REF" == refs/heads/* ]]; then
+          REF="${GITHUB_REF#refs/heads/}"
+        else
+          REF="${GITHUB_SHA:0:7}"
+        fi
+
+        echo "Building for $OWNER/$REPO @ $REF ($SYSTEM)"
+        echo "Store: $STORE_PATH"
+
+        # Determine which outputs to build
+        if [[ -n "$OUTPUTS" ]]; then
+          IFS=',' read -ra OUTPUT_LIST <<< "$OUTPUTS"
+        else
+          OUTPUT_JSON=$(nix flake show --json 2>/dev/null || echo '{}')
+          mapfile -t OUTPUT_LIST < <(echo "$OUTPUT_JSON" | jq -r ".packages.\"$SYSTEM\" // {} | keys[]" 2>/dev/null || true)
+          if [[ ${#OUTPUT_LIST[@]} -eq 0 ]]; then
+            OUTPUT_LIST=("default")
+          fi
+        fi
+
+        echo "Building outputs: ${OUTPUT_LIST[*]}"
+
+        declare -A OUTPUT_PATHS
+        declare -A ALL_CLOSURES
+
+        # Build each output with custom store path
+        for output in "${OUTPUT_LIST[@]}"; do
+          echo "::group::Building .#$output"
+
+          # Build to our custom store using local?store= URL
+          OUT_PATH=$(nix build ".#$output" \
+            --store "$STORE_URL" \
+            --no-link \
+            --print-out-paths \
+            2>&1 | tail -1)
+
+          OUTPUT_PATHS["$output"]="$OUT_PATH"
+          echo "Built $output -> $OUT_PATH"
+          echo "::endgroup::"
+        done
+
+        # Collect closure for all outputs
+        echo "::group::Collecting closure"
+        for output in "${!OUTPUT_PATHS[@]}"; do
+          OUT_PATH="${OUTPUT_PATHS[$output]}"
+          while IFS= read -r path; do
+            [[ -z "$path" ]] && continue
+            ALL_CLOSURES["$path"]=1
+          done < <(nix path-info --store "$STORE_URL" --recursive "$OUT_PATH" 2>/dev/null)
+        done
+        echo "Total closure size: ${#ALL_CLOSURES[@]} paths"
+        echo "::endgroup::"
+
+        # Upload NARs to R2
+        echo "::group::Uploading NARs"
+        UPLOADED=0
+        SKIPPED=0
+
+        for path in "${!ALL_CLOSURES[@]}"; do
+          NAME=$(basename "$path")
+          HASH="${NAME%%-*}"
+
+          # Skip if already exists
+          if aws s3api head-object \
+            --bucket "$R2_BUCKET" \
+            --key "nar/$HASH.nar.xz" \
+            --endpoint-url "$R2_ENDPOINT" &>/dev/null; then
+            ((SKIPPED++)) || true
+            continue
+          fi
+
+          echo "Uploading $NAME..."
+          TMPNAR=$(mktemp)
+          nix nar dump-path --store "$STORE_URL" "$path" | xz -T0 -6 > "$TMPNAR"
+          aws s3 cp "$TMPNAR" "s3://$R2_BUCKET/nar/$HASH.nar.xz" \
+            --endpoint-url "$R2_ENDPOINT" --quiet
+          rm -f "$TMPNAR"
+          ((UPLOADED++)) || true
+        done
+
+        echo "Uploaded $UPLOADED NARs, skipped $SKIPPED (cached)"
+        echo "::endgroup::"
+
+        # Build manifest
+        echo "::group::Building manifest"
+        MANIFEST_FILE=$(mktemp)
+
+        jq -n \
+          --argjson schema_version 1 \
+          --arg repository "github:$OWNER/$REPO" \
+          --arg ref "$REF" \
+          --arg commit "$GITHUB_SHA" \
+          --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --arg system "$SYSTEM" \
+          '{schema_version: $schema_version, repository: $repository, ref: $ref,
+            commit: $commit, built_at: $built_at, system: $system, outputs: {}}' > "$MANIFEST_FILE"
+
+        for output in "${!OUTPUT_PATHS[@]}"; do
+          OUT_PATH="${OUTPUT_PATHS[$output]}"
+
+          NAR_INFO=$(nix path-info --store "$STORE_URL" --json "$OUT_PATH" 2>/dev/null | jq '.[0]')
+          NAR_HASH=$(echo "$NAR_INFO" | jq -r '.narHash // ""')
+          NAR_SIZE=$(echo "$NAR_INFO" | jq -r '.narSize // 0')
+
+          # Find binary in bin/
+          BIN_PATH="null"
+          if [[ -d "$OUT_PATH/bin" ]]; then
+            FIRST_BIN=$(find "$OUT_PATH/bin" -maxdepth 1 -type f -executable 2>/dev/null | head -1 || true)
+            if [[ -n "$FIRST_BIN" ]]; then
+              BIN_PATH="\"bin/$(basename "$FIRST_BIN")\""
+            fi
+          fi
+
+          # Build closure array
+          CLOSURE_FILE=$(mktemp)
+          echo "[]" > "$CLOSURE_FILE"
+
+          while IFS= read -r dep_path; do
+            [[ -z "$dep_path" || "$dep_path" == "$OUT_PATH" ]] && continue
+
+            DEP_INFO=$(nix path-info --store "$STORE_URL" --json "$dep_path" 2>/dev/null | jq '.[0]')
+            DEP_NAR_HASH=$(echo "$DEP_INFO" | jq -r '.narHash // ""')
+            DEP_NAR_SIZE=$(echo "$DEP_INFO" | jq -r '.narSize // 0')
+
+            jq --arg store_path "$dep_path" \
+               --arg nar_hash "$DEP_NAR_HASH" \
+               --argjson nar_size "$DEP_NAR_SIZE" \
+               '. += [{store_path: $store_path, nar_hash: $nar_hash, nar_size: $nar_size}]' \
+               "$CLOSURE_FILE" > "${CLOSURE_FILE}.tmp"
+            mv "${CLOSURE_FILE}.tmp" "$CLOSURE_FILE"
+          done < <(nix path-info --store "$STORE_URL" --recursive "$OUT_PATH" 2>/dev/null)
+
+          CLOSURE_JSON=$(cat "$CLOSURE_FILE")
+          rm -f "$CLOSURE_FILE"
+
+          jq --arg output "$output" \
+             --arg store_path "$OUT_PATH" \
+             --arg nar_hash "$NAR_HASH" \
+             --argjson nar_size "$NAR_SIZE" \
+             --argjson bin "$BIN_PATH" \
+             --argjson closure "$CLOSURE_JSON" \
+             '.outputs[$output] = {store_path: $store_path, nar_hash: $nar_hash,
+               nar_size: $nar_size, bin: $bin, closure: $closure}' \
+             "$MANIFEST_FILE" > "${MANIFEST_FILE}.tmp"
+          mv "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
+        done
+
+        echo "Manifest:"
+        jq '.' "$MANIFEST_FILE"
+        echo "::endgroup::"
+
+        # Upload manifests
+        echo "::group::Uploading manifests"
+        MANIFEST_KEY="meta/github/$OWNER/$REPO/$REF-$SYSTEM.json"
+        aws s3 cp "$MANIFEST_FILE" "s3://$R2_BUCKET/$MANIFEST_KEY" \
+          --endpoint-url "$R2_ENDPOINT" --content-type "application/json"
+        echo "Uploaded to $MANIFEST_KEY"
+
+        # Also upload as latest for default branch
+        DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
+        if [[ "$REF" == "$DEFAULT_BRANCH" ]]; then
+          LATEST_KEY="meta/github/$OWNER/$REPO/latest-$SYSTEM.json"
+          aws s3 cp "$MANIFEST_FILE" "s3://$R2_BUCKET/$LATEST_KEY" \
+            --endpoint-url "$R2_ENDPOINT" --content-type "application/json"
+          echo "Also uploaded as $LATEST_KEY"
+        fi
+
+        rm -f "$MANIFEST_FILE"
+        echo "::endgroup::"
+
+        # Set action outputs
+        MANIFEST_URL="https://${R2_BUCKET}.r2.dev/$MANIFEST_KEY"
+        echo "manifest_url=$MANIFEST_URL" >> "$GITHUB_OUTPUT"
+
+        ALL_PATHS=()
+        for path in "${!ALL_CLOSURES[@]}"; do ALL_PATHS+=("$path"); done
+        PATHS_JSON=$(printf '%s\n' "${ALL_PATHS[@]}" | jq -R . | jq -s .)
+        echo "store_paths=$PATHS_JSON" >> "$GITHUB_OUTPUT"
+
+        echo ""
+        echo "Published successfully!"
+        echo "Manifest: $MANIFEST_URL"

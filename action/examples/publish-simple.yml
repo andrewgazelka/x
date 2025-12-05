@@ -1,0 +1,21 @@
+# Simple example: Linux x86_64 only
+# For projects that only need one platform
+
+name: Publish to x
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: andrewgazelka/x/action@main
+        with:
+          r2_account_id: ${{ secrets.R2_ACCOUNT_ID }}
+          r2_access_key: ${{ secrets.R2_ACCESS_KEY }}
+          r2_secret_key: ${{ secrets.R2_SECRET_KEY }}

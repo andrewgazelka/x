@@ -1,0 +1,36 @@
+# Example workflow: Publish to x registry
+# Add this to your repo as .github/workflows/x-publish.yml
+
+name: Publish to x
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  publish:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            system: x86_64-linux
+          - os: ubuntu-24.04-arm
+            system: aarch64-linux
+          - os: macos-13
+            system: x86_64-darwin
+          - os: macos-14
+            system: aarch64-darwin
+
+    runs-on: ${{ matrix.os }}
+    name: Publish (${{ matrix.system }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: andrewgazelka/x/action@main
+        with:
+          r2_account_id: ${{ secrets.R2_ACCOUNT_ID }}
+          r2_access_key: ${{ secrets.R2_ACCESS_KEY }}
+          r2_secret_key: ${{ secrets.R2_SECRET_KEY }}
