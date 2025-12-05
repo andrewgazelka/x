@@ -1,10 +1,18 @@
+//! Package reference parser for x
+//!
+//! Parses package reference strings like:
+//! - `github:owner/repo`
+//! - `github:owner/repo#output`
+//! - `github:owner/repo/ref`
+//! - `github:owner/repo/ref#output`
+
 /// Parsed package reference from strings like:
 /// - `github:owner/repo`
 /// - `github:owner/repo#output`
 /// - `github:owner/repo/ref`
 /// - `github:owner/repo/ref#output`
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PackageRef {
+pub struct Package {
     pub host: String,
     pub owner: String,
     pub repo: String,
@@ -12,7 +20,7 @@ pub struct PackageRef {
     pub output: String,
 }
 
-impl PackageRef {
+impl Package {
     pub const DEFAULT_REF: &str = "latest";
     pub const DEFAULT_OUTPUT: &str = "default";
 }
@@ -21,14 +29,14 @@ impl PackageRef {
 ///
 /// # Examples
 /// ```
-/// let pkg = parse("github:andrewgazelka/tap").unwrap();
+/// let pkg = libx_ref::parse("github:andrewgazelka/tap").unwrap();
 /// assert_eq!(pkg.host, "github");
 /// assert_eq!(pkg.owner, "andrewgazelka");
 /// assert_eq!(pkg.repo, "tap");
 /// assert_eq!(pkg.git_ref, "latest");
 /// assert_eq!(pkg.output, "default");
 /// ```
-pub fn parse(input: &str) -> eyre::Result<PackageRef> {
+pub fn parse(input: &str) -> eyre::Result<Package> {
     // Split on ':' to get host and rest
     let (host, rest) = input
         .split_once(':')
@@ -41,7 +49,7 @@ pub fn parse(input: &str) -> eyre::Result<PackageRef> {
     // Split rest on '#' to separate path from output
     let (path, output) = match rest.split_once('#') {
         Some((p, o)) => (p, o.to_string()),
-        None => (rest, PackageRef::DEFAULT_OUTPUT.to_string()),
+        None => (rest, Package::DEFAULT_OUTPUT.to_string()),
     };
 
     if output.is_empty() {
@@ -55,7 +63,7 @@ pub fn parse(input: &str) -> eyre::Result<PackageRef> {
         [owner, repo] => (
             (*owner).to_string(),
             (*repo).to_string(),
-            PackageRef::DEFAULT_REF.to_string(),
+            Package::DEFAULT_REF.to_string(),
         ),
         [owner, repo, git_ref] => (
             (*owner).to_string(),
@@ -77,7 +85,7 @@ pub fn parse(input: &str) -> eyre::Result<PackageRef> {
         eyre::bail!("invalid package reference: empty owner or repo in '{input}'");
     }
 
-    Ok(PackageRef {
+    Ok(Package {
         host: host.to_string(),
         owner,
         repo,

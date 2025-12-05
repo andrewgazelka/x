@@ -1,9 +1,9 @@
 //! Binary execution
 
-use crate::manifest;
+use eyre::WrapErr;
 
 /// Run the binary from an output, replacing the current process
-pub fn run(output: &manifest::Output, args: &[String]) -> eyre::Result<()> {
+pub fn run(output: &libx_manifest::Output, args: &[String]) -> eyre::Result<()> {
     let bin_path = resolve_binary(output)?;
 
     tracing::info!("Running {bin_path}...");
@@ -22,7 +22,10 @@ pub fn run(output: &manifest::Output, args: &[String]) -> eyre::Result<()> {
     #[cfg(not(unix))]
     {
         // On non-Unix, spawn and wait
-        let status = std::process::Command::new(&bin_path).args(args).status()?;
+        let status = std::process::Command::new(&bin_path)
+            .args(args)
+            .status()
+            .wrap_err_with(|| format!("failed to spawn '{bin_path}'"))?;
 
         if !status.success() {
             // Return error instead of exit to allow graceful handling
@@ -34,7 +37,7 @@ pub fn run(output: &manifest::Output, args: &[String]) -> eyre::Result<()> {
 }
 
 /// Resolve the path to the binary for an output
-fn resolve_binary(output: &manifest::Output) -> eyre::Result<String> {
+fn resolve_binary(output: &libx_manifest::Output) -> eyre::Result<String> {
     // If bin is specified, use it
     if let Some(bin) = &output.bin {
         return Ok(format!("{}/{bin}", output.store_path));
@@ -53,19 +56,20 @@ fn find_single_binary(bin_dir: &str) -> eyre::Result<String> {
         eyre::bail!("bin directory not found: {bin_dir}");
     }
 
-    let entries: Vec<_> = std::fs::read_dir(path)?
+    let entries: Vec<_> = std::fs::read_dir(path)
+        .wrap_err_with(|| format!("failed to read directory {bin_dir}"))?
         .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_ok_and(|t| t.is_file() || t.is_symlink()))
         .collect();
 
     match entries.len() {
         0 => eyre::bail!("no binaries found in {bin_dir}"),
-        1 => Ok(entries
-            .first()
-            .expect("checked len is 1")
-            .path()
-            .to_string_lossy()
-            .to_string()),
+        1 => {
+            let Some(entry) = entries.first() else {
+                unreachable!("checked len is 1")
+            };
+            Ok(entry.path().to_string_lossy().to_string())
+        }
         n => {
             let names: Vec<_> = entries
                 .iter()
@@ -86,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_resolve_binary_with_explicit_bin() {
-        let output = manifest::Output {
+        let output = libx_manifest::Output {
             store_path: "/home/x/.x/store/abc123-foo".to_string(),
             nar_hash: "sha256-xxx".to_string(),
             nar_size: 100,

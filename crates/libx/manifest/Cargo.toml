@@ -1,0 +1,15 @@
+[package]
+name = "libx-manifest"
+version = "0.1.0"
+edition.workspace = true
+description = "Manifest structures for x package registry"
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+eyre.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+[package]
+name = "libx"
+version = "0.1.0"
+edition.workspace = true
+description = "Core library for rootless, cross-platform Nix package runner"
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Internal crates
+libx-manifest.workspace = true
+libx-nar.workspace = true
+libx-ref.workspace = true
+libx-store.workspace = true
+
+# External dependencies
+base64.workspace = true
+eyre.workspace = true
+liblzma.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -1,3 +1,7 @@
+//! Manifest structures for the x package registry
+//!
+//! Defines the data structures for package manifests fetched from R2.
+
 /// Package manifest fetched from R2
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Manifest {
@@ -45,11 +49,7 @@ impl Manifest {
     /// Get an output by name, or error if not found
     pub fn get_output(&self, name: &str) -> eyre::Result<&Output> {
         self.outputs.get(name).ok_or_else(|| {
-            let available: Vec<&str> = self
-                .outputs
-                .keys()
-                .map(std::string::String::as_str)
-                .collect();
+            let available: Vec<&str> = self.outputs.keys().map(String::as_str).collect();
             eyre::eyre!(
                 "output '{name}' not found. Available outputs: {}",
                 available.join(", ")

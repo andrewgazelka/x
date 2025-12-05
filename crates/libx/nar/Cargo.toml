@@ -1,0 +1,13 @@
+[package]
+name = "libx-nar"
+version = "0.1.0"
+edition.workspace = true
+description = "NAR (Nix ARchive) format unpacker"
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+eyre.workspace = true
+
+[lints]
+workspace = true

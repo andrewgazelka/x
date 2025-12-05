@@ -18,23 +18,28 @@
 //! Strings are: 8-byte little-endian length + contents + padding to 8-byte boundary
 //! ```
 
+use eyre::WrapErr;
+
 const NAR_MAGIC: &str = "nix-archive-1";
 
 /// Unpack a NAR archive to the given destination path
 pub fn unpack<R: std::io::Read>(reader: R, dest: &std::path::Path) -> eyre::Result<()> {
     let mut reader = std::io::BufReader::new(reader);
 
-    let magic = read_string(&mut reader)?;
+    let magic = read_string(&mut reader).wrap_err("failed to read NAR magic header")?;
     if magic != NAR_MAGIC {
         eyre::bail!("invalid NAR magic: expected '{NAR_MAGIC}', got '{magic}'");
     }
 
     unpack_node(&mut reader, dest)
+        .wrap_err_with(|| format!("failed to unpack to {}", dest.display()))
 }
 
 fn read_u64<R: std::io::Read>(reader: &mut R) -> eyre::Result<u64> {
     let mut buf = [0u8; 8];
-    reader.read_exact(&mut buf)?;
+    reader
+        .read_exact(&mut buf)
+        .wrap_err("failed to read 8-byte length")?;
     Ok(u64::from_le_bytes(buf))
 }
 
@@ -42,13 +47,17 @@ fn read_string<R: std::io::Read>(reader: &mut R) -> eyre::Result<String> {
     let len = read_u64(reader)? as usize;
 
     let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf)?;
+    reader
+        .read_exact(&mut buf)
+        .wrap_err_with(|| format!("failed to read {len} bytes for string"))?;
 
     // Skip padding to 8-byte boundary
     let padding = (8 - (len % 8)) % 8;
     if padding > 0 {
         let mut pad = vec![0u8; padding];
-        reader.read_exact(&mut pad)?;
+        reader
+            .read_exact(&mut pad)
+            .wrap_err("failed to read padding bytes")?;
     }
 
     String::from_utf8(buf).map_err(|e| eyre::eyre!("invalid UTF-8 in NAR string: {e}"))
@@ -58,13 +67,17 @@ fn read_bytes<R: std::io::Read>(reader: &mut R) -> eyre::Result<Vec<u8>> {
     let len = read_u64(reader)? as usize;
 
     let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf)?;
+    reader
+        .read_exact(&mut buf)
+        .wrap_err_with(|| format!("failed to read {len} bytes"))?;
 
     // Skip padding to 8-byte boundary
     let padding = (8 - (len % 8)) % 8;
     if padding > 0 {
         let mut pad = vec![0u8; padding];
-        reader.read_exact(&mut pad)?;
+        reader
+            .read_exact(&mut pad)
+            .wrap_err("failed to read padding bytes")?;
     }
 
     Ok(buf)
@@ -85,9 +98,12 @@ fn unpack_node<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre
     let node_type = read_string(reader)?;
 
     match node_type.as_str() {
-        "regular" => unpack_regular(reader, path)?,
-        "directory" => unpack_directory(reader, path)?,
-        "symlink" => unpack_symlink(reader, path)?,
+        "regular" => unpack_regular(reader, path)
+            .wrap_err_with(|| format!("failed to unpack regular file {}", path.display()))?,
+        "directory" => unpack_directory(reader, path)
+            .wrap_err_with(|| format!("failed to unpack directory {}", path.display()))?,
+        "symlink" => unpack_symlink(reader, path)
+            .wrap_err_with(|| format!("failed to unpack symlink {}", path.display()))?,
         _ => eyre::bail!("unknown NAR node type: '{node_type}'"),
     }
 
@@ -121,10 +137,12 @@ fn unpack_regular<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> e
 
     // Write file contents
     if let Some(data) = contents {
-        std::fs::write(path, data)?;
+        std::fs::write(path, data)
+            .wrap_err_with(|| format!("failed to write file {}", path.display()))?;
     } else {
         // Empty file
-        std::fs::write(path, [])?;
+        std::fs::write(path, [])
+            .wrap_err_with(|| format!("failed to write empty file {}", path.display()))?;
     }
 
     // Set executable permission on Unix
@@ -132,9 +150,13 @@ fn unpack_regular<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> e
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(path)?.permissions();
+            let mut perms = std::fs::metadata(path)
+                .wrap_err_with(|| format!("failed to get metadata for {}", path.display()))?
+                .permissions();
             perms.set_mode(0o755);
-            std::fs::set_permissions(path, perms)?;
+            std::fs::set_permissions(path, perms).wrap_err_with(|| {
+                format!("failed to set executable permission on {}", path.display())
+            })?;
         }
     }
 
@@ -142,7 +164,8 @@ fn unpack_regular<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> e
 }
 
 fn unpack_directory<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
-    std::fs::create_dir_all(path)?;
+    std::fs::create_dir_all(path)
+        .wrap_err_with(|| format!("failed to create directory {}", path.display()))?;
 
     loop {
         let tag = read_string(reader)?;
@@ -177,7 +200,9 @@ fn unpack_symlink<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> e
                 let target = read_string(reader)?;
 
                 #[cfg(unix)]
-                std::os::unix::fs::symlink(&target, path)?;
+                std::os::unix::fs::symlink(&target, path).wrap_err_with(|| {
+                    format!("failed to create symlink {} -> {target}", path.display())
+                })?;
 
                 #[cfg(not(unix))]
                 {

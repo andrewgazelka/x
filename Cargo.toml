@@ -1,6 +1,32 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/libx/*", "crates/x"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+rust-version = "1.91.0"
+
+[workspace.dependencies]
+# Internal workspace crates
+libx = { path = "crates/libx/core" }
+libx-manifest = { path = "crates/libx/manifest" }
+libx-nar = { path = "crates/libx/nar" }
+libx-ref = { path = "crates/libx/ref" }
+libx-store = { path = "crates/libx/store" }
+
+# External dependencies
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+color-eyre = "0.6"
+eyre = "0.6"
+liblzma = "0.3"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [workspace.lints.clippy]
 # Deny all categories by default

@@ -6,27 +6,38 @@
 pub mod bootstrap;
 pub mod exec;
 pub mod fetch;
-pub mod manifest;
-pub mod nar;
-pub mod ref_parser;
-pub mod store;
+
+// Re-export from sub-crates for convenience
+pub use libx_manifest as manifest;
+pub use libx_nar as nar;
+pub use libx_ref as ref_parser;
+pub use libx_store as store;
+
+use eyre::WrapErr;
 
 /// Run a package with the given arguments.
 pub fn run(package: &str, args: &[String]) -> eyre::Result<()> {
-    bootstrap::ensure_store()?;
+    bootstrap::ensure_store().wrap_err("failed to ensure store exists")?;
 
-    let pkg_ref = ref_parser::parse(package)?;
-    let manifest = fetch::fetch_manifest(&pkg_ref)?;
-    let output = manifest.get_output(&pkg_ref.output)?;
+    let pkg_ref = libx_ref::parse(package)
+        .wrap_err_with(|| format!("failed to parse package reference '{package}'"))?;
+    let manifest = fetch::fetch_manifest(&pkg_ref)
+        .wrap_err_with(|| format!("failed to fetch manifest for '{package}'"))?;
+    let output = manifest
+        .get_output(&pkg_ref.output)
+        .wrap_err_with(|| format!("failed to get output '{}' from manifest", pkg_ref.output))?;
 
-    fetch::ensure_closure(output)?;
+    fetch::ensure_closure(output)
+        .wrap_err_with(|| format!("failed to fetch closure for '{package}'"))?;
     exec::run(output, args)
 }
 
 /// Get information about a package.
 pub fn info(package: &str) -> eyre::Result<PackageInfo> {
-    let pkg_ref = ref_parser::parse(package)?;
-    let manifest = fetch::fetch_manifest(&pkg_ref)?;
+    let pkg_ref = libx_ref::parse(package)
+        .wrap_err_with(|| format!("failed to parse package reference '{package}'"))?;
+    let manifest = fetch::fetch_manifest(&pkg_ref)
+        .wrap_err_with(|| format!("failed to fetch manifest for '{package}'"))?;
 
     let outputs = manifest
         .outputs
@@ -51,13 +62,14 @@ pub fn info(package: &str) -> eyre::Result<PackageInfo> {
 
 /// List installed store paths.
 pub fn list() -> eyre::Result<Vec<String>> {
-    let store_dir = store::store_dir();
+    let store_dir = libx_store::store_dir();
 
     if !store_dir.exists() {
         return Ok(vec![]);
     }
 
-    let entries: Vec<String> = std::fs::read_dir(&store_dir)?
+    let entries: Vec<String> = std::fs::read_dir(&store_dir)
+        .wrap_err_with(|| format!("failed to read store directory {}", store_dir.display()))?
         .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .map(|e| e.file_name().to_string_lossy().to_string())

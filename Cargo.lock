@@ -798,11 +798,45 @@ dependencies = [
  "base64",
  "eyre",
  "liblzma",
+ "libx-manifest",
+ "libx-nar",
+ "libx-ref",
+ "libx-store",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
  "tracing",
+]
+
+[[package]]
+name = "libx-manifest"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "libx-nar"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+]
+
+[[package]]
+name = "libx-ref"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+]
+
+[[package]]
+name = "libx-store"
+version = "0.1.0"
+dependencies = [
+ "eyre",
 ]
 
 [[package]]

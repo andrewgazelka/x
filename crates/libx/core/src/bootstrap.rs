@@ -3,11 +3,11 @@
 //! Sets up the store directory at `/home/x/.x/store`.
 //! This path must be consistent across all systems for Nix store paths to work.
 
-use crate::store;
+use eyre::WrapErr;
 
 /// Check if the store is set up, and set it up if not
 pub fn ensure_store() -> eyre::Result<()> {
-    let store_dir = store::store_dir();
+    let store_dir = libx_store::store_dir();
 
     if store_dir.exists() {
         return Ok(());
@@ -33,7 +33,7 @@ pub fn ensure_store() -> eyre::Result<()> {
 #[cfg(target_os = "linux")]
 fn setup_linux() -> eyre::Result<()> {
     let home_x = std::path::Path::new("/home/x");
-    let store_dir = store::store_dir();
+    let store_dir = libx_store::store_dir();
 
     if !home_x.exists() {
         tracing::info!("Creating /home/x (requires sudo)...");
@@ -41,7 +41,8 @@ fn setup_linux() -> eyre::Result<()> {
         // Try to create with sudo
         let status = std::process::Command::new("sudo")
             .args(["mkdir", "-p", "/home/x"])
-            .status()?;
+            .status()
+            .wrap_err("failed to run 'sudo mkdir -p /home/x'")?;
 
         if !status.success() {
             eyre::bail!(
@@ -54,7 +55,8 @@ fn setup_linux() -> eyre::Result<()> {
         let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
         let status = std::process::Command::new("sudo")
             .args(["chown", &user, "/home/x"])
-            .status()?;
+            .status()
+            .wrap_err_with(|| format!("failed to run 'sudo chown {user} /home/x'"))?;
 
         if !status.success() {
             eyre::bail!("failed to chown /home/x to {user}");
@@ -62,7 +64,8 @@ fn setup_linux() -> eyre::Result<()> {
     }
 
     // Create the store directory
-    std::fs::create_dir_all(&store_dir)?;
+    std::fs::create_dir_all(&store_dir)
+        .wrap_err_with(|| format!("failed to create store directory {}", store_dir.display()))?;
 
     tracing::info!("Store created at {}", store_dir.display());
     Ok(())
@@ -72,14 +75,14 @@ fn setup_linux() -> eyre::Result<()> {
 fn setup_macos() -> eyre::Result<()> {
     let shared_x = std::path::Path::new("/Users/Shared/.x");
     let home_x = std::path::Path::new("/home/x");
-    let store_dir = store::store_dir();
+    let store_dir = libx_store::store_dir();
 
     // Strategy: Use /Users/Shared/.x as the real location,
     // symlink /home/x -> /Users/Shared/.x
 
     // Create /Users/Shared/.x (no sudo needed)
     if !shared_x.exists() {
-        std::fs::create_dir_all(shared_x)?;
+        std::fs::create_dir_all(shared_x).wrap_err("failed to create /Users/Shared/.x")?;
     }
 
     // Create the symlink at /home/x if it doesn't exist
@@ -97,7 +100,8 @@ fn setup_macos() -> eyre::Result<()> {
 
             let status = std::process::Command::new("sudo")
                 .args(["mkdir", "-p", "/home"])
-                .status()?;
+                .status()
+                .wrap_err("failed to run 'sudo mkdir -p /home'")?;
 
             if !status.success() {
                 eyre::bail!(
@@ -111,7 +115,8 @@ fn setup_macos() -> eyre::Result<()> {
 
         let status = std::process::Command::new("sudo")
             .args(["ln", "-s", "/Users/Shared/.x", "/home/x"])
-            .status()?;
+            .status()
+            .wrap_err("failed to run 'sudo ln -s /Users/Shared/.x /home/x'")?;
 
         if !status.success() {
             eyre::bail!(
@@ -122,7 +127,8 @@ fn setup_macos() -> eyre::Result<()> {
     }
 
     // Create the store directory
-    std::fs::create_dir_all(&store_dir)?;
+    std::fs::create_dir_all(&store_dir)
+        .wrap_err_with(|| format!("failed to create store directory {}", store_dir.display()))?;
 
     tracing::info!("Store created at {}", store_dir.display());
     Ok(())
