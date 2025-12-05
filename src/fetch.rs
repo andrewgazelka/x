@@ -8,11 +8,11 @@ pub const R2_BASE: &str = "https://x-pkg.r2.dev";
 /// Fetch a manifest for a package reference
 pub fn fetch_manifest(pkg: &ref_parser::PackageRef) -> eyre::Result<manifest::Manifest> {
     let url = format!(
-        "{}/meta/{}/{}/{}/{}.json",
-        R2_BASE, pkg.host, pkg.owner, pkg.repo, pkg.git_ref
+        "{R2_BASE}/meta/{}/{}/{}/{}.json",
+        pkg.host, pkg.owner, pkg.repo, pkg.git_ref
     );
 
-    eprintln!("Fetching manifest from {url}...");
+    tracing::info!("Fetching manifest from {url}...");
 
     let resp = reqwest::blocking::get(&url)?;
 
@@ -55,9 +55,9 @@ pub fn ensure_closure(output: &manifest::Output) -> eyre::Result<()> {
 /// Fetch a NAR from R2 and unpack it to the store
 fn fetch_and_unpack(store_path: &str, expected_hash: &str) -> eyre::Result<()> {
     let hash = store::hash_from_store_path(store_path)?;
-    let url = format!("{}/nar/{}.nar.xz", R2_BASE, hash);
+    let url = format!("{R2_BASE}/nar/{hash}.nar.xz");
 
-    eprintln!("Fetching {store_path}...");
+    tracing::info!("Fetching {store_path}...");
 
     let resp = reqwest::blocking::get(&url)?;
 
@@ -68,7 +68,7 @@ fn fetch_and_unpack(store_path: &str, expected_hash: &str) -> eyre::Result<()> {
     let compressed = resp.bytes()?;
 
     // Decompress XZ
-    let mut decoder = liblzma::read::XzDecoder::new(&compressed[..]);
+    let mut decoder = liblzma::read::XzDecoder::new(compressed.as_ref());
     let mut nar_data = Vec::new();
     std::io::Read::read_to_end(&mut decoder, &mut nar_data)?;
 
@@ -82,7 +82,7 @@ fn fetch_and_unpack(store_path: &str, expected_hash: &str) -> eyre::Result<()> {
     }
 
     // Unpack NAR
-    nar::unpack(&nar_data[..], &dest)?;
+    nar::unpack(nar_data.as_slice(), &dest)?;
 
     Ok(())
 }
@@ -112,7 +112,7 @@ mod tests {
     fn test_verify_hash_correct() {
         let data = b"hello world";
         // SHA256 of "hello world" in base64
-        let expected = "sha256-uU0nuZNNPgilLlLX2n2r+gy4C/FVQIykOlMmkjjjP4E=";
+        let expected = "sha256-uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek=";
         assert!(verify_hash(data, expected).is_ok());
     }
 

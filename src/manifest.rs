@@ -1,9 +1,5 @@
-use std::collections::HashMap;
-
-use serde::{Deserialize, Serialize};
-
 /// Package manifest fetched from R2
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Manifest {
     pub schema_version: u32,
     pub repository: String,
@@ -12,13 +8,13 @@ pub struct Manifest {
     pub commit: String,
     pub built_at: String,
     pub system: String,
-    pub outputs: HashMap<String, Output>,
+    pub outputs: std::collections::HashMap<String, Output>,
     #[serde(default)]
     pub attestation: Option<Attestation>,
 }
 
 /// A single output (e.g., "default", "cli", "gui")
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Output {
     pub store_path: String,
     pub nar_hash: String,
@@ -29,7 +25,7 @@ pub struct Output {
 }
 
 /// A dependency in the closure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClosureEntry {
     pub store_path: String,
     pub nar_hash: String,
@@ -37,7 +33,7 @@ pub struct ClosureEntry {
 }
 
 /// GitHub OIDC attestation (optional for MVP)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Attestation {
     pub github_oidc: Option<String>,
     pub github_repository: Option<String>,
@@ -49,7 +45,11 @@ impl Manifest {
     /// Get an output by name, or error if not found
     pub fn get_output(&self, name: &str) -> eyre::Result<&Output> {
         self.outputs.get(name).ok_or_else(|| {
-            let available: Vec<&str> = self.outputs.keys().map(|s| s.as_str()).collect();
+            let available: Vec<&str> = self
+                .outputs
+                .keys()
+                .map(std::string::String::as_str)
+                .collect();
             eyre::eyre!(
                 "output '{name}' not found. Available outputs: {}",
                 available.join(", ")
@@ -78,7 +78,11 @@ pub fn current_system() -> eyre::Result<&'static str> {
         all(target_arch = "x86_64", target_os = "macos"),
         all(target_arch = "aarch64", target_os = "macos"),
     )))]
-    eyre::bail!("unsupported system: {}-{}", std::env::consts::ARCH, std::env::consts::OS)
+    eyre::bail!(
+        "unsupported system: {}-{}",
+        std::env::consts::ARCH,
+        std::env::consts::OS
+    )
 }
 
 #[cfg(test)]
@@ -120,7 +124,7 @@ mod tests {
             commit: "abc".to_string(),
             built_at: "2024-01-01".to_string(),
             system: "x86_64-linux".to_string(),
-            outputs: HashMap::new(),
+            outputs: std::collections::HashMap::new(),
             attestation: None,
         };
 

@@ -13,7 +13,10 @@ pub fn ensure_store() -> eyre::Result<()> {
         return Ok(());
     }
 
-    eprintln!("First-time setup: creating store at {}", store_dir.display());
+    tracing::info!(
+        "First-time setup: creating store at {}",
+        store_dir.display()
+    );
 
     #[cfg(target_os = "linux")]
     setup_linux()?;
@@ -33,7 +36,7 @@ fn setup_linux() -> eyre::Result<()> {
     let store_dir = store::store_dir();
 
     if !home_x.exists() {
-        eprintln!("Creating /home/x (requires sudo)...");
+        tracing::info!("Creating /home/x (requires sudo)...");
 
         // Try to create with sudo
         let status = std::process::Command::new("sudo")
@@ -61,7 +64,7 @@ fn setup_linux() -> eyre::Result<()> {
     // Create the store directory
     std::fs::create_dir_all(&store_dir)?;
 
-    eprintln!("Store created at {}", store_dir.display());
+    tracing::info!("Store created at {}", store_dir.display());
     Ok(())
 }
 
@@ -81,12 +84,12 @@ fn setup_macos() -> eyre::Result<()> {
 
     // Create the symlink at /home/x if it doesn't exist
     if !home_x.exists() {
-        eprintln!("Creating symlink /home/x -> /Users/Shared/.x (requires sudo)...");
+        tracing::info!("Creating symlink /home/x -> /Users/Shared/.x (requires sudo)...");
 
         // Ensure /home exists (may need synthetic.conf on newer macOS)
         let home = std::path::Path::new("/home");
         if !home.exists() {
-            eprintln!(
+            tracing::warn!(
                 "Note: /home doesn't exist on macOS.\n\
                  You may need to add 'home' to /etc/synthetic.conf and reboot.\n\
                  Alternatively, we'll try to create it with sudo."
@@ -121,32 +124,35 @@ fn setup_macos() -> eyre::Result<()> {
     // Create the store directory
     std::fs::create_dir_all(&store_dir)?;
 
-    eprintln!("Store created at {}", store_dir.display());
+    tracing::info!("Store created at {}", store_dir.display());
     Ok(())
 }
 
 /// Print setup instructions for the user
 pub fn print_manual_setup_instructions() {
-    eprintln!("\n=== Manual Setup Instructions ===\n");
-
     #[cfg(target_os = "linux")]
     {
-        eprintln!("On Linux, run:");
-        eprintln!("  sudo mkdir -p /home/x");
-        eprintln!("  sudo chown $USER /home/x");
-        eprintln!("  mkdir -p /home/x/.x/store");
+        tracing::info!("\n=== Manual Setup Instructions ===\n");
+        tracing::info!("On Linux, run:");
+        tracing::info!("  sudo mkdir -p /home/x");
+        tracing::info!("  sudo chown $USER /home/x");
+        tracing::info!("  mkdir -p /home/x/.x/store");
     }
 
     #[cfg(target_os = "macos")]
     {
-        eprintln!("On macOS, run:");
-        eprintln!("  mkdir -p /Users/Shared/.x/store");
-        eprintln!("  sudo ln -s /Users/Shared/.x /home/x");
-        eprintln!();
-        eprintln!("If /home doesn't exist, first add to /etc/synthetic.conf:");
-        eprintln!("  echo 'home' | sudo tee -a /etc/synthetic.conf");
-        eprintln!("Then reboot and run the commands above.");
+        tracing::info!("\n=== Manual Setup Instructions ===\n");
+        tracing::info!("On macOS, run:");
+        tracing::info!("  mkdir -p /Users/Shared/.x/store");
+        tracing::info!("  sudo ln -s /Users/Shared/.x /home/x");
+        tracing::info!("");
+        tracing::info!("If /home doesn't exist, first add to /etc/synthetic.conf:");
+        tracing::info!("  echo 'home' | sudo tee -a /etc/synthetic.conf");
+        tracing::info!("Then reboot and run the commands above.");
     }
 
-    eprintln!();
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        tracing::warn!("Manual setup instructions not available for this platform");
+    }
 }

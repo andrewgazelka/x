@@ -18,13 +18,11 @@
 //! Strings are: 8-byte little-endian length + contents + padding to 8-byte boundary
 //! ```
 
-use std::io::{BufReader, Read};
-
 const NAR_MAGIC: &str = "nix-archive-1";
 
 /// Unpack a NAR archive to the given destination path
-pub fn unpack<R: Read>(reader: R, dest: &std::path::Path) -> eyre::Result<()> {
-    let mut reader = BufReader::new(reader);
+pub fn unpack<R: std::io::Read>(reader: R, dest: &std::path::Path) -> eyre::Result<()> {
+    let mut reader = std::io::BufReader::new(reader);
 
     let magic = read_string(&mut reader)?;
     if magic != NAR_MAGIC {
@@ -34,13 +32,13 @@ pub fn unpack<R: Read>(reader: R, dest: &std::path::Path) -> eyre::Result<()> {
     unpack_node(&mut reader, dest)
 }
 
-fn read_u64<R: Read>(reader: &mut R) -> eyre::Result<u64> {
+fn read_u64<R: std::io::Read>(reader: &mut R) -> eyre::Result<u64> {
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)?;
     Ok(u64::from_le_bytes(buf))
 }
 
-fn read_string<R: Read>(reader: &mut R) -> eyre::Result<String> {
+fn read_string<R: std::io::Read>(reader: &mut R) -> eyre::Result<String> {
     let len = read_u64(reader)? as usize;
 
     let mut buf = vec![0u8; len];
@@ -56,7 +54,7 @@ fn read_string<R: Read>(reader: &mut R) -> eyre::Result<String> {
     String::from_utf8(buf).map_err(|e| eyre::eyre!("invalid UTF-8 in NAR string: {e}"))
 }
 
-fn read_bytes<R: Read>(reader: &mut R) -> eyre::Result<Vec<u8>> {
+fn read_bytes<R: std::io::Read>(reader: &mut R) -> eyre::Result<Vec<u8>> {
     let len = read_u64(reader)? as usize;
 
     let mut buf = vec![0u8; len];
@@ -72,7 +70,7 @@ fn read_bytes<R: Read>(reader: &mut R) -> eyre::Result<Vec<u8>> {
     Ok(buf)
 }
 
-fn expect_string<R: Read>(reader: &mut R, expected: &str) -> eyre::Result<()> {
+fn expect_string<R: std::io::Read>(reader: &mut R, expected: &str) -> eyre::Result<()> {
     let actual = read_string(reader)?;
     if actual != expected {
         eyre::bail!("NAR parse error: expected '{expected}', got '{actual}'");
@@ -80,7 +78,7 @@ fn expect_string<R: Read>(reader: &mut R, expected: &str) -> eyre::Result<()> {
     Ok(())
 }
 
-fn unpack_node<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
+fn unpack_node<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
     expect_string(reader, "(")?;
     expect_string(reader, "type")?;
 
@@ -97,7 +95,7 @@ fn unpack_node<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<
     Ok(())
 }
 
-fn unpack_regular<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
+fn unpack_regular<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
     let mut executable = false;
     let mut contents: Option<Vec<u8>> = None;
 
@@ -143,7 +141,7 @@ fn unpack_regular<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Resu
     Ok(())
 }
 
-fn unpack_directory<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
+fn unpack_directory<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
     std::fs::create_dir_all(path)?;
 
     loop {
@@ -171,7 +169,7 @@ fn unpack_directory<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Re
     Ok(())
 }
 
-fn unpack_symlink<R: Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
+fn unpack_symlink<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre::Result<()> {
     loop {
         let tag = read_string(reader)?;
         match tag.as_str() {

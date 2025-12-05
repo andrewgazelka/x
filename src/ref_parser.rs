@@ -57,11 +57,13 @@ pub fn parse(input: &str) -> eyre::Result<PackageRef> {
             (*repo).to_string(),
             PackageRef::DEFAULT_REF.to_string(),
         ),
-        [owner, repo, git_ref] => {
-            ((*owner).to_string(), (*repo).to_string(), (*git_ref).to_string())
-        }
+        [owner, repo, git_ref] => (
+            (*owner).to_string(),
+            (*repo).to_string(),
+            (*git_ref).to_string(),
+        ),
         // Handle refs with slashes like "refs/heads/main"
-        [owner, repo, ref_parts @ ..] if ref_parts.len() >= 1 => (
+        [owner, repo, ref_parts @ ..] if !ref_parts.is_empty() => (
             (*owner).to_string(),
             (*repo).to_string(),
             ref_parts.join("/"),

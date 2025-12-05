@@ -6,17 +6,14 @@
   <code>x run github:owner/repo</code>
 </p>
 
-Run Nix packages without installing Nix. No root required.
+Run Nix packages without root access or installing Nix.
 
 ## Features
 
-- **Zero setup**: Downloads pre-built binaries from R2, unpacks NAR archives, runs them
-- **Cross-platform**: Works on Linux (x86_64, aarch64) and macOS (Intel, Apple Silicon)
-- **Nix-compatible**: Uses the same store path semantics as Nix for binary cache compatibility
-
-## How It Works
-
-Publishers build packages with a GitHub Action that uploads NAR archives to R2. The `x` CLI fetches manifests and dependencies on demand, unpacking them to a fixed store path (`/home/x/.x/store`).
+- **Rootless**: No sudo for daily use after one-time setup
+- **Cross-platform**: Works on Linux and macOS
+- **Self-contained**: Single binary, no Nix installation required
+- **Fast**: Fetches pre-built packages from CDN with hash verification
 
 ## Usage
 
@@ -24,29 +21,26 @@ Publishers build packages with a GitHub Action that uploads NAR archives to R2. 
 # Run a package
 x run github:owner/repo
 
-# Run specific output
+# Run with arguments
+x run github:owner/repo -- --help
+
+# Run a specific output
 x run github:owner/repo#cli
 
-# Run specific version
+# Run a specific ref
 x run github:owner/repo/v1.0.0
-
-# Pass arguments
-x run github:owner/repo -- --help
 
 # Show package info
 x info github:owner/repo
+
+# List installed packages
+x list
 ```
+
+## How It Works
+
+Pre-built packages are fetched from a CDN as NAR archives (Nix's archive format), unpacked to `/home/x/.x/store`, and executed directly. The fixed store path ensures binaries work without patching.
 
 ## Status
 
-MVP in development. Core CLI functionality works:
-- Package reference parsing
-- Manifest fetching
-- NAR unpacking
-- Binary execution
-
-Not yet implemented:
-- GitHub Action for publishing
-- R2 bucket setup
-- Garbage collection
-- Lockfiles
+MVP. Works for basic use cases. Not yet published.

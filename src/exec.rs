@@ -6,7 +6,7 @@ use crate::manifest;
 pub fn run(output: &manifest::Output, args: &[String]) -> eyre::Result<()> {
     let bin_path = resolve_binary(output)?;
 
-    eprintln!("Running {bin_path}...");
+    tracing::info!("Running {bin_path}...");
 
     // exec() replaces the current process on Unix
     #[cfg(unix)]
@@ -25,7 +25,8 @@ pub fn run(output: &manifest::Output, args: &[String]) -> eyre::Result<()> {
         let status = std::process::Command::new(&bin_path).args(args).status()?;
 
         if !status.success() {
-            std::process::exit(status.code().unwrap_or(1));
+            // Return error instead of exit to allow graceful handling
+            eyre::bail!("process exited with status: {}", status.code().unwrap_or(1));
         }
 
         Ok(())
@@ -36,7 +37,7 @@ pub fn run(output: &manifest::Output, args: &[String]) -> eyre::Result<()> {
 fn resolve_binary(output: &manifest::Output) -> eyre::Result<String> {
     // If bin is specified, use it
     if let Some(bin) = &output.bin {
-        return Ok(format!("{}/{}", output.store_path, bin));
+        return Ok(format!("{}/{bin}", output.store_path));
     }
 
     // Otherwise, try to find a single binary in bin/
@@ -53,13 +54,18 @@ fn find_single_binary(bin_dir: &str) -> eyre::Result<String> {
     }
 
     let entries: Vec<_> = std::fs::read_dir(path)?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_ok_and(|t| t.is_file() || t.is_symlink()))
         .collect();
 
     match entries.len() {
         0 => eyre::bail!("no binaries found in {bin_dir}"),
-        1 => Ok(entries[0].path().to_string_lossy().to_string()),
+        1 => Ok(entries
+            .first()
+            .expect("checked len is 1")
+            .path()
+            .to_string_lossy()
+            .to_string()),
         n => {
             let names: Vec<_> = entries
                 .iter()
