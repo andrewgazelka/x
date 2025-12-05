@@ -7,7 +7,7 @@ fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { package, args } => x::run(&package, &args),
+        Commands::Run { package, args } => libx::run(&package, &args),
         Commands::Info { package } => cmd_info(&package),
         Commands::List => cmd_list(),
         Commands::Setup => {
@@ -52,7 +52,7 @@ enum Commands {
 use clap::Parser;
 
 fn cmd_info(package: &str) -> eyre::Result<()> {
-    let info = x::info(package)?;
+    let info = libx::info(package)?;
 
     tracing::info!(repository = %info.repository, "Package");
     tracing::info!(git_ref = %info.git_ref, "Ref");
@@ -79,7 +79,7 @@ fn cmd_info(package: &str) -> eyre::Result<()> {
 }
 
 fn cmd_list() -> eyre::Result<()> {
-    let entries = x::list()?;
+    let entries = libx::list()?;
 
     if entries.is_empty() {
         tracing::info!("No packages installed");
@@ -95,5 +95,5 @@ fn cmd_list() -> eyre::Result<()> {
 }
 
 fn cmd_setup() {
-    x::bootstrap::print_manual_setup_instructions();
+    libx::bootstrap::print_manual_setup_instructions();
 }

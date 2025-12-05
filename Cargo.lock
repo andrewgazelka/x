@@ -792,6 +792,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "libx"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "eyre",
+ "liblzma",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1906,15 +1920,10 @@ checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
 name = "x"
 version = "0.1.0"
 dependencies = [
- "base64",
  "clap",
  "color-eyre",
  "eyre",
- "liblzma",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
+ "libx",
  "tracing",
  "tracing-subscriber",
 ]

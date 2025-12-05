@@ -1,0 +1,18 @@
+[package]
+name = "x"
+version = "0.1.0"
+edition = "2024"
+description = "Rootless, cross-platform Nix package runner"
+license = "MIT"
+rust-version = "1.91.0"
+
+[dependencies]
+libx = { path = "../libx" }
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+color-eyre = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints]
+workspace = true
