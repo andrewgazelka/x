@@ -178,11 +178,18 @@ runs:
           echo "::group::Building .#$output"
 
           # Build to our custom store using local?store= URL
-          OUT_PATH=$(nix build ".#$output" \
+          # Run build and capture both stdout and stderr separately
+          BUILD_OUT=$(mktemp)
+          if ! nix build ".#$output" \
             --store "$STORE_URL" \
             --no-link \
-            --print-out-paths \
-            2>&1 | tail -1)
+            --print-out-paths > "$BUILD_OUT" 2>&1; then
+            cat "$BUILD_OUT"
+            rm -f "$BUILD_OUT"
+            exit 1
+          fi
+          OUT_PATH=$(tail -1 "$BUILD_OUT")
+          rm -f "$BUILD_OUT"
 
           OUTPUT_PATHS["$output"]="$OUT_PATH"
           echo "Built $output -> $OUT_PATH"
