@@ -80,15 +80,11 @@ runs:
         sudo mkdir -p "$X_STORE" "$X_STATE" "$X_LOG"
         sudo chown -R "$(whoami)" "$X_STORE" "$X_STATE" "$X_LOG"
 
-    - name: Install Nix
-      uses: DeterminateSystems/nix-installer-action@main
+    - name: Install Nix (single-user, no daemon)
+      uses: nixbuild/nix-quick-install-action@v34
       with:
-        extra-conf: |
-          experimental-features = nix-command flakes
+        nix_conf: |
           sandbox = false
-
-    - name: Setup Nix cache
-      uses: DeterminateSystems/magic-nix-cache-action@main
 
     - name: Configure AWS CLI for R2
       shell: bash
