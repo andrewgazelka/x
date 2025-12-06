@@ -58,44 +58,6 @@ runs:
         esac
         echo "system=$SYSTEM" >> "$GITHUB_OUTPUT"
 
-        # OS-specific store paths (must match x CLI expectations)
-        if [[ "$(uname -s)" == "Darwin" ]]; then
-          STORE_PATH="/Users/Shared/.x/store"
-          STATE_PATH="/Users/Shared/.x/var/nix"
-          LOG_PATH="/Users/Shared/.x/var/log/nix"
-        else
-          STORE_PATH="/home/x/.x/store"
-          STATE_PATH="/home/x/.x/var/nix"
-          LOG_PATH="/home/x/.x/var/log/nix"
-        fi
-
-        echo "store_path=$STORE_PATH" >> "$GITHUB_OUTPUT"
-        echo "state_path=$STATE_PATH" >> "$GITHUB_OUTPUT"
-        echo "log_path=$LOG_PATH" >> "$GITHUB_OUTPUT"
-
-        # Nix store URL for building with custom paths
-        echo "store_url=local?store=$STORE_PATH&state=$STATE_PATH&log=$LOG_PATH" >> "$GITHUB_OUTPUT"
-
-    - name: Setup custom store directory
-      shell: bash
-      env:
-        STORE_PATH: ${{ steps.system.outputs.store_path }}
-        STATE_PATH: ${{ steps.system.outputs.state_path }}
-        LOG_PATH: ${{ steps.system.outputs.log_path }}
-      run: |
-        # Create store directories with appropriate permissions
-        if [[ "$(uname -s)" == "Darwin" ]]; then
-          # macOS: /Users/Shared is writable without root
-          mkdir -p "$STORE_PATH" "$STATE_PATH" "$LOG_PATH"
-        else
-          # Linux: need to create /home/x
-          sudo mkdir -p "$(dirname "$STORE_PATH")"
-          sudo chown -R "$(id -u):$(id -g)" "$(dirname "$STORE_PATH")"
-          mkdir -p "$STORE_PATH" "$STATE_PATH" "$LOG_PATH"
-        fi
-
-        echo "Store directory ready at $STORE_PATH"
-
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       with:
@@ -136,8 +98,6 @@ runs:
         OUTPUTS: ${{ inputs.outputs }}
         WORKDIR: ${{ inputs.working_directory }}
         SYSTEM: ${{ steps.system.outputs.system }}
-        STORE_PATH: ${{ steps.system.outputs.store_path }}
-        STORE_URL: ${{ steps.system.outputs.store_url }}
       run: |
         set -euo pipefail
         cd "$WORKDIR"
@@ -155,7 +115,6 @@ runs:
         fi
 
         echo "Building for $OWNER/$REPO @ $REF ($SYSTEM)"
-        echo "Store: $STORE_PATH"
 
         # Determine which outputs to build
         if [[ -n "$OUTPUTS" ]]; then
@@ -173,15 +132,12 @@ runs:
         declare -A OUTPUT_PATHS
         declare -A ALL_CLOSURES
 
-        # Build each output with custom store path
+        # Build each output using standard Nix store (daemon handles permissions)
         for output in "${OUTPUT_LIST[@]}"; do
           echo "::group::Building .#$output"
 
-          # Build to our custom store using local?store= URL
-          # Run build and capture both stdout and stderr separately
           BUILD_OUT=$(mktemp)
           if ! nix build ".#$output" \
-            --store "$STORE_URL" \
             --no-link \
             --print-out-paths > "$BUILD_OUT" 2>&1; then
             cat "$BUILD_OUT"
@@ -203,7 +159,7 @@ runs:
           while IFS= read -r path; do
             [[ -z "$path" ]] && continue
             ALL_CLOSURES["$path"]=1
-          done < <(nix path-info --store "$STORE_URL" --recursive "$OUT_PATH" 2>/dev/null)
+          done < <(nix path-info --recursive "$OUT_PATH" 2>/dev/null)
         done
         echo "Total closure size: ${#ALL_CLOSURES[@]} paths"
         echo "::endgroup::"
@@ -228,7 +184,7 @@ runs:
 
           echo "Uploading $NAME..."
           TMPNAR=$(mktemp)
-          nix nar dump-path --store "$STORE_URL" "$path" | xz -T0 -6 > "$TMPNAR"
+          nix nar dump-path "$path" | xz -T0 -6 > "$TMPNAR"
           aws s3 cp "$TMPNAR" "s3://$R2_BUCKET/nar/$HASH.nar.xz" \
             --endpoint-url "$R2_ENDPOINT" --quiet
           rm -f "$TMPNAR"
@@ -255,7 +211,7 @@ runs:
         for output in "${!OUTPUT_PATHS[@]}"; do
           OUT_PATH="${OUTPUT_PATHS[$output]}"
 
-          NAR_INFO=$(nix path-info --store "$STORE_URL" --json "$OUT_PATH" 2>/dev/null | jq '.[0]')
+          NAR_INFO=$(nix path-info --json "$OUT_PATH" 2>/dev/null | jq '.[0]')
           NAR_HASH=$(echo "$NAR_INFO" | jq -r '.narHash // ""')
           NAR_SIZE=$(echo "$NAR_INFO" | jq -r '.narSize // 0')
 
@@ -275,7 +231,7 @@ runs:
           while IFS= read -r dep_path; do
             [[ -z "$dep_path" || "$dep_path" == "$OUT_PATH" ]] && continue
 
-            DEP_INFO=$(nix path-info --store "$STORE_URL" --json "$dep_path" 2>/dev/null | jq '.[0]')
+            DEP_INFO=$(nix path-info --json "$dep_path" 2>/dev/null | jq '.[0]')
             DEP_NAR_HASH=$(echo "$DEP_INFO" | jq -r '.narHash // ""')
             DEP_NAR_SIZE=$(echo "$DEP_INFO" | jq -r '.narSize // 0')
 
@@ -285,7 +241,7 @@ runs:
                '. += [{store_path: $store_path, nar_hash: $nar_hash, nar_size: $nar_size}]' \
                "$CLOSURE_FILE" > "${CLOSURE_FILE}.tmp"
             mv "${CLOSURE_FILE}.tmp" "$CLOSURE_FILE"
-          done < <(nix path-info --store "$STORE_URL" --recursive "$OUT_PATH" 2>/dev/null)
+          done < <(nix path-info --recursive "$OUT_PATH" 2>/dev/null)
 
           CLOSURE_JSON=$(cat "$CLOSURE_FILE")
           rm -f "$CLOSURE_FILE"
