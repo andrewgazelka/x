@@ -43,7 +43,7 @@ nix build --store 'local?store=/Users/Shared/.x/store&state=/Users/Shared/.x/sta
 These paths are BAKED INTO packages at build time. Changing them requires rebuilding all packages.
 
 - macOS: `/Users/Shared/.x/store` (writable by all users without root)
-- Linux: `/home/.x/store` (top-level in /home, avoids per-user paths)
+- Linux: `/opt/.x/store` (requires one-time `sudo mkdir -p /opt/.x && sudo chown $USER /opt/.x`)
 
 ## Code Structure
 

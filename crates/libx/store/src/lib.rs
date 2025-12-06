@@ -2,7 +2,7 @@
 //!
 //! Packages are stored at a fixed path per OS to ensure Nix store paths match
 //! between build time and runtime:
-//! - Linux: `/home/.x/store` (top-level in /home, avoids per-user paths)
+//! - Linux: `/opt/.x/store` (requires one-time `sudo mkdir -p /opt/.x && sudo chown $USER /opt/.x`)
 //! - macOS: `/Users/Shared/.x/store` (writable by all users without root)
 //!
 //! IMPORTANT: These paths are BAKED INTO packages at build time by the GitHub Action.
@@ -10,9 +10,9 @@
 
 use std::path::PathBuf;
 
-/// Store path for Linux systems - top-level /home/.x avoids per-user paths
+/// Store path for Linux systems - /opt/.x requires one-time sudo setup
 #[cfg(target_os = "linux")]
-pub const STORE_PATH: &str = "/home/.x/store";
+pub const STORE_PATH: &str = "/opt/.x/store";
 
 /// Store path for macOS - /Users/Shared is writable by all users without root
 #[cfg(target_os = "macos")]
@@ -50,7 +50,7 @@ pub fn hash_from_store_path(store_path: &str) -> eyre::Result<&str> {
 /// Get the base directory for x data (parent of store)
 #[cfg(target_os = "linux")]
 pub fn base_dir() -> PathBuf {
-    PathBuf::from("/home/.x")
+    PathBuf::from("/opt/.x")
 }
 
 #[cfg(target_os = "macos")]
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_hash_from_store_path_linux_style() {
-        let hash = hash_from_store_path("/home/.x/store/abc123-package-1.0.0").unwrap();
+        let hash = hash_from_store_path("/opt/.x/store/abc123-package-1.0.0").unwrap();
         assert_eq!(hash, "abc123");
     }
 
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_hash_from_complex_path() {
-        let hash = hash_from_store_path("/home/.x/store/xyz789def-my-app-name-2.3.4").unwrap();
+        let hash = hash_from_store_path("/opt/.x/store/xyz789def-my-app-name-2.3.4").unwrap();
         assert_eq!(hash, "xyz789def");
     }
 

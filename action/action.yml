@@ -62,22 +62,23 @@ runs:
         # These paths are BAKED INTO the built packages
         # Users must have the same paths writable on their machines
         # macOS: /Users/Shared/.x (writable by all users without root)
-        # Linux: /home/.x (top-level, avoids per-user paths)
+        # Linux: /opt/.x (requires sudo mkdir once, then user-writable)
         if [[ "$(uname -s)" == "Darwin" ]]; then
           X_STORE="/Users/Shared/.x/store"
           X_STATE="/Users/Shared/.x/state"
           X_LOG="/Users/Shared/.x/log"
         else
-          X_STORE="/home/.x/store"
-          X_STATE="/home/.x/state"
-          X_LOG="/home/.x/log"
+          X_STORE="/opt/.x/store"
+          X_STATE="/opt/.x/state"
+          X_LOG="/opt/.x/log"
         fi
         echo "x_store=$X_STORE" >> "$GITHUB_OUTPUT"
         echo "x_state=$X_STATE" >> "$GITHUB_OUTPUT"
         echo "x_log=$X_LOG" >> "$GITHUB_OUTPUT"
 
-        # Create store directories
-        mkdir -p "$X_STORE" "$X_STATE" "$X_LOG"
+        # Create store directories (CI has sudo, end users do one-time setup)
+        sudo mkdir -p "$X_STORE" "$X_STATE" "$X_LOG"
+        sudo chown -R "$(whoami)" "$X_STORE" "$X_STATE" "$X_LOG"
 
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
