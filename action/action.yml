@@ -121,7 +121,11 @@ runs:
           IFS=',' read -ra OUTPUT_LIST <<< "$OUTPUTS"
         else
           OUTPUT_JSON=$(nix flake show --json 2>/dev/null || echo '{}')
-          mapfile -t OUTPUT_LIST < <(echo "$OUTPUT_JSON" | jq -r ".packages.\"$SYSTEM\" // {} | keys[]" 2>/dev/null || true)
+          # Use while loop instead of mapfile for macOS compatibility
+          OUTPUT_LIST=()
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && OUTPUT_LIST+=("$line")
+          done < <(echo "$OUTPUT_JSON" | jq -r ".packages.\"$SYSTEM\" // {} | keys[]" 2>/dev/null || true)
           if [[ ${#OUTPUT_LIST[@]} -eq 0 ]]; then
             OUTPUT_LIST=("default")
           fi
