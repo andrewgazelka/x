@@ -1,6 +1,10 @@
 //! Binary execution
+//!
+//! Packages have custom store paths baked in (e.g., /Users/Shared/.x/store).
+//! The store_path in the manifest is the actual path on disk.
 
 use eyre::WrapErr;
+use std::path::Path;
 
 /// Run the binary from an output, replacing the current process
 pub fn run(output: &libx_manifest::Output, args: &[String]) -> eyre::Result<()> {
@@ -36,16 +40,19 @@ pub fn run(output: &libx_manifest::Output, args: &[String]) -> eyre::Result<()> 
     }
 }
 
-/// Resolve the path to the binary for an output
+/// Resolve the path to the binary for an output.
+/// The store_path already points to the correct location on disk.
 fn resolve_binary(output: &libx_manifest::Output) -> eyre::Result<String> {
+    let store_path = Path::new(&output.store_path);
+
     // If bin is specified, use it
     if let Some(bin) = &output.bin {
-        return Ok(format!("{}/{bin}", output.store_path));
+        return Ok(format!("{}/{bin}", store_path.display()));
     }
 
     // Otherwise, try to find a single binary in bin/
-    let bin_dir = format!("{}/bin", output.store_path);
-    find_single_binary(&bin_dir)
+    let bin_dir = store_path.join("bin");
+    find_single_binary(&bin_dir.to_string_lossy())
 }
 
 /// Find a single binary in a directory
@@ -90,8 +97,10 @@ mod tests {
 
     #[test]
     fn test_resolve_binary_with_explicit_bin() {
+        // Store paths now contain the actual path (no rewriting needed)
+        let store_path = format!("{}/abc123-foo", libx_store::STORE_PATH);
         let output = libx_manifest::Output {
-            store_path: "/home/x/.x/store/abc123-foo".to_string(),
+            store_path: store_path.clone(),
             nar_hash: "sha256-xxx".to_string(),
             nar_size: 100,
             bin: Some("bin/my-binary".to_string()),
@@ -99,6 +108,7 @@ mod tests {
         };
 
         let path = resolve_binary(&output).unwrap();
-        assert_eq!(path, "/home/x/.x/store/abc123-foo/bin/my-binary");
+        let expected = format!("{}/bin/my-binary", store_path);
+        assert_eq!(path, expected);
     }
 }

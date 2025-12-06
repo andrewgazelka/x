@@ -58,6 +58,27 @@ runs:
         esac
         echo "system=$SYSTEM" >> "$GITHUB_OUTPUT"
 
+        # Set custom store path for rootless operation
+        # These paths are BAKED INTO the built packages
+        # Users must have the same paths writable on their machines
+        # macOS: /Users/Shared/.x (writable by all users without root)
+        # Linux: /home/.x (top-level, avoids per-user paths)
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          X_STORE="/Users/Shared/.x/store"
+          X_STATE="/Users/Shared/.x/state"
+          X_LOG="/Users/Shared/.x/log"
+        else
+          X_STORE="/home/.x/store"
+          X_STATE="/home/.x/state"
+          X_LOG="/home/.x/log"
+        fi
+        echo "x_store=$X_STORE" >> "$GITHUB_OUTPUT"
+        echo "x_state=$X_STATE" >> "$GITHUB_OUTPUT"
+        echo "x_log=$X_LOG" >> "$GITHUB_OUTPUT"
+
+        # Create store directories
+        mkdir -p "$X_STORE" "$X_STATE" "$X_LOG"
+
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
       with:
@@ -107,6 +128,9 @@ runs:
         OUTPUTS: ${{ inputs.outputs }}
         WORKDIR: ${{ inputs.working_directory }}
         SYSTEM: ${{ steps.system.outputs.system }}
+        X_STORE: ${{ steps.system.outputs.x_store }}
+        X_STATE: ${{ steps.system.outputs.x_state }}
+        X_LOG: ${{ steps.system.outputs.x_log }}
       run: |
         # Use homebrew bash on macOS if available (for associative arrays)
         BASH_BIN="${BASH_BIN:-$(which bash)}"
@@ -148,15 +172,23 @@ runs:
 
         echo "Building outputs: ${OUTPUT_LIST[*]}"
 
+        # Custom store URI for rootless operation
+        # Packages will have $X_STORE paths baked in, NOT /nix/store
+        STORE_URI="local?store=${X_STORE}&state=${X_STATE}&log=${X_LOG}"
+        echo "Using custom store: $STORE_URI"
+
         declare -A OUTPUT_PATHS
         declare -A ALL_CLOSURES
 
-        # Build each output using standard Nix store (daemon handles permissions)
+        # Build each output using custom store path (truly rootless)
         for output in "${OUTPUT_LIST[@]}"; do
           echo "::group::Building .#$output"
 
           BUILD_OUT=$(mktemp)
+          # --store builds with custom store path baked into binaries
+          # This means packages will reference $X_STORE, not /nix/store
           if ! nix build ".#$output" \
+            --store "$STORE_URI" \
             --no-link \
             --print-out-paths > "$BUILD_OUT" 2>&1; then
             cat "$BUILD_OUT"
@@ -178,7 +210,7 @@ runs:
           while IFS= read -r path; do
             [[ -z "$path" ]] && continue
             ALL_CLOSURES["$path"]=1
-          done < <(nix path-info --recursive "$OUT_PATH" 2>/dev/null)
+          done < <(nix path-info --store "$STORE_URI" --recursive "$OUT_PATH" 2>/dev/null)
         done
         echo "Total closure size: ${#ALL_CLOSURES[@]} paths"
         echo "::endgroup::"
@@ -203,7 +235,7 @@ runs:
 
           echo "Uploading $NAME..."
           TMPNAR=$(mktemp)
-          nix nar dump-path "$path" | xz -T0 -6 > "$TMPNAR"
+          nix nar dump-path --store "$STORE_URI" "$path" | xz -T0 -6 > "$TMPNAR"
           aws s3 cp "$TMPNAR" "s3://$R2_BUCKET/nar/$HASH.nar.xz" \
             --endpoint-url "$R2_ENDPOINT" --quiet
           rm -f "$TMPNAR"
@@ -230,7 +262,7 @@ runs:
         for output in "${!OUTPUT_PATHS[@]}"; do
           OUT_PATH="${OUTPUT_PATHS[$output]}"
 
-          NAR_INFO=$(nix path-info --json "$OUT_PATH" 2>/dev/null | jq 'to_entries[0].value')
+          NAR_INFO=$(nix path-info --store "$STORE_URI" --json "$OUT_PATH" 2>/dev/null | jq 'to_entries[0].value')
           NAR_HASH=$(echo "$NAR_INFO" | jq -r '.narHash // ""')
           NAR_SIZE=$(echo "$NAR_INFO" | jq -r '.narSize // 0')
 
@@ -250,7 +282,7 @@ runs:
           while IFS= read -r dep_path; do
             [[ -z "$dep_path" || "$dep_path" == "$OUT_PATH" ]] && continue
 
-            DEP_INFO=$(nix path-info --json "$dep_path" 2>/dev/null | jq 'to_entries[0].value')
+            DEP_INFO=$(nix path-info --store "$STORE_URI" --json "$dep_path" 2>/dev/null | jq 'to_entries[0].value')
             DEP_NAR_HASH=$(echo "$DEP_INFO" | jq -r '.narHash // ""')
             DEP_NAR_SIZE=$(echo "$DEP_INFO" | jq -r '.narSize // 0')
 
@@ -260,7 +292,7 @@ runs:
                '. += [{store_path: $store_path, nar_hash: $nar_hash, nar_size: $nar_size}]' \
                "$CLOSURE_FILE" > "${CLOSURE_FILE}.tmp"
             mv "${CLOSURE_FILE}.tmp" "$CLOSURE_FILE"
-          done < <(nix path-info --recursive "$OUT_PATH" 2>/dev/null)
+          done < <(nix path-info --store "$STORE_URI" --recursive "$OUT_PATH" 2>/dev/null)
 
           CLOSURE_JSON=$(cat "$CLOSURE_FILE")
           rm -f "$CLOSURE_FILE"

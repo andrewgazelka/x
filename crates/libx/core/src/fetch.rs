@@ -1,6 +1,10 @@
 //! HTTP fetching for manifests and NARs
+//!
+//! Packages are built with custom store paths baked in (e.g., /Users/Shared/.x/store).
+//! No path rewriting is needed - we just unpack directly to the store path from the manifest.
 
 use eyre::WrapErr;
+use std::path::Path;
 
 /// Base URL for the x package registry
 pub const R2_BASE: &str = "https://pub-698579286ab3445b8062024bd63d5bf3.r2.dev";
@@ -39,18 +43,22 @@ pub fn fetch_manifest(pkg: &libx_ref::Package) -> eyre::Result<libx_manifest::Ma
     Ok(manifest)
 }
 
-/// Ensure all paths in the closure are present in the store
+/// Ensure all paths in the closure are present in the store.
+/// Store paths in the manifest already point to the correct location
+/// (e.g., /Users/Shared/.x/store/...) - no rewriting needed.
 pub fn ensure_closure(output: &libx_manifest::Output) -> eyre::Result<()> {
     // First fetch all dependencies
     for dep in &output.closure {
-        if !libx_store::path_exists(&dep.store_path) {
+        let local_path = Path::new(&dep.store_path);
+        if !local_path.exists() {
             fetch_and_unpack(&dep.store_path, &dep.nar_hash)
                 .wrap_err_with(|| format!("failed to fetch dependency {}", dep.store_path))?;
         }
     }
 
     // Then fetch the output itself
-    if !libx_store::path_exists(&output.store_path) {
+    let local_path = Path::new(&output.store_path);
+    if !local_path.exists() {
         fetch_and_unpack(&output.store_path, &output.nar_hash)
             .wrap_err_with(|| format!("failed to fetch output {}", output.store_path))?;
     }
@@ -58,11 +66,14 @@ pub fn ensure_closure(output: &libx_manifest::Output) -> eyre::Result<()> {
     Ok(())
 }
 
-/// Fetch a NAR from R2 and unpack it to the store
+/// Fetch a NAR from R2 and unpack it directly to the store path.
+/// The store_path already contains the correct destination (e.g., /Users/Shared/.x/store/...).
 fn fetch_and_unpack(store_path: &str, expected_hash: &str) -> eyre::Result<()> {
     let hash = libx_store::hash_from_store_path(store_path)
         .wrap_err_with(|| format!("failed to extract hash from store path '{store_path}'"))?;
     let url = format!("{R2_BASE}/nar/{hash}.nar.xz");
+
+    let dest = Path::new(store_path);
 
     tracing::info!("Fetching {store_path}...");
 
@@ -88,15 +99,14 @@ fn fetch_and_unpack(store_path: &str, expected_hash: &str) -> eyre::Result<()> {
         .wrap_err_with(|| format!("hash verification failed for {store_path}"))?;
 
     // Create destination directory
-    let dest = std::path::PathBuf::from(store_path);
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
-            .wrap_err_with(|| format!("failed to create parent directory for {store_path}"))?;
+            .wrap_err_with(|| format!("failed to create parent directory for {}", dest.display()))?;
     }
 
-    // Unpack NAR
-    libx_nar::unpack(nar_data.as_slice(), &dest)
-        .wrap_err_with(|| format!("failed to unpack NAR to {store_path}"))?;
+    // Unpack NAR directly to the store path
+    libx_nar::unpack(nar_data.as_slice(), dest)
+        .wrap_err_with(|| format!("failed to unpack NAR to {}", dest.display()))?;
 
     Ok(())
 }

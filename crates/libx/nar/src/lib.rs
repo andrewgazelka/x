@@ -97,6 +97,7 @@ fn unpack_node<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre
 
     let node_type = read_string(reader)?;
 
+    // Each unpack_* function reads its content and the closing ")"
     match node_type.as_str() {
         "regular" => unpack_regular(reader, path)
             .wrap_err_with(|| format!("failed to unpack regular file {}", path.display()))?,
@@ -107,7 +108,7 @@ fn unpack_node<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> eyre
         _ => eyre::bail!("unknown NAR node type: '{node_type}'"),
     }
 
-    expect_string(reader, ")")?;
+    // Note: closing ")" is consumed by the unpack_* function
     Ok(())
 }
 
@@ -127,8 +128,8 @@ fn unpack_regular<R: std::io::Read>(reader: &mut R, path: &std::path::Path) -> e
                 contents = Some(read_bytes(reader)?);
             }
             ")" => {
-                // Put the closing paren back conceptually - we need to handle this
-                // by writing the file and returning early
+                // This is the closing paren for this node - write file and return
+                // (the parent doesn't expect to read this, we consumed it)
                 break;
             }
             _ => eyre::bail!("unexpected tag in regular file: '{tag}'"),
