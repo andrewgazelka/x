@@ -89,9 +89,18 @@ runs:
         aws configure set default.region auto
         echo "R2_ENDPOINT=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
 
+    - name: Install modern bash (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # macOS ships with bash 3.2 which lacks associative arrays
+        # Install bash 5+ via homebrew
+        brew install bash
+        echo "Using bash: $(brew --prefix)/bin/bash"
+
     - name: Build and publish
       id: publish
-      shell: bash
+      shell: ${{ runner.os == 'macOS' && '/opt/homebrew/bin/bash' || 'bash' }}
       env:
         R2_BUCKET: ${{ inputs.r2_bucket }}
         R2_PUBLIC_URL: ${{ inputs.r2_public_url }}
