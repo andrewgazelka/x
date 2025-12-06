@@ -3,12 +3,13 @@
 use eyre::WrapErr;
 
 /// Base URL for the x package registry
-pub const R2_BASE: &str = "https://x-pkg.r2.dev";
+pub const R2_BASE: &str = "https://pub-698579286ab3445b8062024bd63d5bf3.r2.dev";
 
 /// Fetch a manifest for a package reference
 pub fn fetch_manifest(pkg: &libx_ref::Package) -> eyre::Result<libx_manifest::Manifest> {
+    let system = libx_manifest::current_system()?;
     let url = format!(
-        "{R2_BASE}/meta/{}/{}/{}/{}.json",
+        "{R2_BASE}/meta/{}/{}/{}/{}-{system}.json",
         pkg.host, pkg.owner, pkg.repo, pkg.git_ref
     );
 

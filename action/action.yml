@@ -20,6 +20,10 @@ inputs:
     description: 'R2 bucket name'
     required: false
     default: 'x-pkg'
+  r2_public_url:
+    description: 'R2 bucket public URL (from wrangler r2 bucket dev-url enable)'
+    required: false
+    default: 'https://pub-698579286ab3445b8062024bd63d5bf3.r2.dev'
   outputs:
     description: 'Comma-separated list of flake outputs to build (empty = all)'
     required: false
@@ -128,6 +132,7 @@ runs:
       shell: bash
       env:
         R2_BUCKET: ${{ inputs.r2_bucket }}
+        R2_PUBLIC_URL: ${{ inputs.r2_public_url }}
         OUTPUTS: ${{ inputs.outputs }}
         WORKDIR: ${{ inputs.working_directory }}
         SYSTEM: ${{ steps.system.outputs.system }}
@@ -314,7 +319,7 @@ runs:
         echo "::endgroup::"
 
         # Set action outputs
-        MANIFEST_URL="https://${R2_BUCKET}.r2.dev/$MANIFEST_KEY"
+        MANIFEST_URL="${R2_PUBLIC_URL}/$MANIFEST_KEY"
         echo "manifest_url=$MANIFEST_URL" >> "$GITHUB_OUTPUT"
 
         ALL_PATHS=()
