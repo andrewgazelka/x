@@ -211,7 +211,7 @@ runs:
         for output in "${!OUTPUT_PATHS[@]}"; do
           OUT_PATH="${OUTPUT_PATHS[$output]}"
 
-          NAR_INFO=$(nix path-info --json "$OUT_PATH" 2>/dev/null | jq '.[0]')
+          NAR_INFO=$(nix path-info --json "$OUT_PATH" 2>/dev/null | jq 'to_entries[0].value')
           NAR_HASH=$(echo "$NAR_INFO" | jq -r '.narHash // ""')
           NAR_SIZE=$(echo "$NAR_INFO" | jq -r '.narSize // 0')
 
@@ -231,7 +231,7 @@ runs:
           while IFS= read -r dep_path; do
             [[ -z "$dep_path" || "$dep_path" == "$OUT_PATH" ]] && continue
 
-            DEP_INFO=$(nix path-info --json "$dep_path" 2>/dev/null | jq '.[0]')
+            DEP_INFO=$(nix path-info --json "$dep_path" 2>/dev/null | jq 'to_entries[0].value')
             DEP_NAR_HASH=$(echo "$DEP_INFO" | jq -r '.narHash // ""')
             DEP_NAR_SIZE=$(echo "$DEP_INFO" | jq -r '.narSize // 0')
 
