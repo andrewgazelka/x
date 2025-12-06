@@ -287,7 +287,8 @@ runs:
 
         ALL_PATHS=()
         for path in "${!ALL_CLOSURES[@]}"; do ALL_PATHS+=("$path"); done
-        PATHS_JSON=$(printf '%s\n' "${ALL_PATHS[@]}" | jq -R . | jq -s .)
+        # Compact JSON to single line for GitHub Actions output
+        PATHS_JSON=$(printf '%s\n' "${ALL_PATHS[@]}" | jq -R . | jq -sc .)
         echo "store_paths=$PATHS_JSON" >> "$GITHUB_OUTPUT"
 
         echo ""
