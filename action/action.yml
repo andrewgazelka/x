@@ -76,10 +76,11 @@ runs:
         echo "x_state=$X_STATE" >> "$GITHUB_OUTPUT"
         echo "x_log=$X_LOG" >> "$GITHUB_OUTPUT"
 
-        # Create store directories with Nix-expected ownership
+        # Create store directories
+        # Store is owned by runner user for single-user nix (no daemon)
         sudo mkdir -p "$X_STORE" "$X_STATE" "$X_LOG"
-        sudo chmod 1775 "$X_STORE"
-        sudo chown -R "$(whoami)" "$X_STATE" "$X_LOG"
+        sudo chown -R "$(whoami)" "$X_STORE" "$X_STATE" "$X_LOG"
+        chmod 755 "$X_STORE"
 
         # Fix ACL issues that cause "suspicious ownership" errors on Linux
         # GitHub runners use overlayfs with ACLs that confuse Nix's permission checks
