@@ -85,6 +85,7 @@ runs:
       with:
         extra-conf: |
           experimental-features = nix-command flakes
+          sandbox = false
 
     - name: Setup Nix cache
       uses: DeterminateSystems/magic-nix-cache-action@main
@@ -190,6 +191,7 @@ runs:
           # This means packages will reference $X_STORE, not /nix/store
           if ! nix build ".#$output" \
             --store "$STORE_URI" \
+            --option sandbox false \
             --no-link \
             --print-out-paths > "$BUILD_OUT" 2>&1; then
             cat "$BUILD_OUT"
