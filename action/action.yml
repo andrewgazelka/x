@@ -96,11 +96,11 @@ runs:
         # macOS ships with bash 3.2 which lacks associative arrays
         # Install bash 5+ via homebrew
         brew install bash
-        echo "Using bash: $(brew --prefix)/bin/bash"
+        echo "BASH_BIN=$(brew --prefix)/bin/bash" >> $GITHUB_ENV
 
     - name: Build and publish
       id: publish
-      shell: ${{ runner.os == 'macOS' && '/opt/homebrew/bin/bash' || 'bash' }}
+      shell: bash
       env:
         R2_BUCKET: ${{ inputs.r2_bucket }}
         R2_PUBLIC_URL: ${{ inputs.r2_public_url }}
@@ -108,6 +108,12 @@ runs:
         WORKDIR: ${{ inputs.working_directory }}
         SYSTEM: ${{ steps.system.outputs.system }}
       run: |
+        # Use homebrew bash on macOS if available (for associative arrays)
+        BASH_BIN="${BASH_BIN:-$(which bash)}"
+
+        # Write script to temp file and execute with modern bash
+        SCRIPT=$(mktemp)
+        cat > "$SCRIPT" << 'SCRIPT_EOF'
         set -euo pipefail
         cd "$WORKDIR"
 
@@ -307,3 +313,9 @@ runs:
         echo ""
         echo "Published successfully!"
         echo "Manifest: $MANIFEST_URL"
+        SCRIPT_EOF
+
+        # Execute script with modern bash
+        chmod +x "$SCRIPT"
+        "$BASH_BIN" "$SCRIPT"
+        rm -f "$SCRIPT"
